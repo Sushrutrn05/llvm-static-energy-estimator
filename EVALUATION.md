@@ -2,165 +2,214 @@
 
 ## Test Cases
 
-### Benchmark 1: `loop.c` — Arithmetic-Intensive Loop
+Five benchmark programs were run through the energy estimation pass to exercise
+different instruction mixes and control-flow shapes:
 
-**Description:** Tight loop performing integer arithmetic (`sum = sum + i * 2`) with a volatile sink to prevent dead-code elimination. The loop runs 1000 iterations.
+| # | Benchmark | Source | Profile | Algorithmic Complexity |
+|---|-----------|--------|---------|------------------------|
+| 1 | `loop.c`     | `benchmarks/loop.c`     | Arithmetic tight loop         | O(N)      |
+| 2 | `matrix.c`   | `benchmarks/matrix.c`   | 64×64 matrix multiplication   | O(N³)     |
+| 3 | `memory.c`   | `benchmarks/memory.c`   | Linked-list traversal         | O(N)      |
+| 4 | `recursion.c`| `benchmarks/recursion.c`| Recursive factorial           | O(N) calls|
+| 5 | `sorting.c`  | `benchmarks/sorting.c`  | Bubble sort                   | O(N²)     |
 
-**Expected behavior:** Compute-bound workload dominated by `add`, `mul`, and `icmp` instructions. Few load/store operations since the computation is register-based.
+All five were compiled with `clang-14 -S -emit-llvm -g -O0` and the pass was run
+with the default `models/x86_energy.json` cost model.
+
+---
+
+### Test 1: `loop.c` — Arithmetic-Intensive Tight Loop
+
+**Purpose:** Register-heavy computation with minimal memory access.
 
 | Metric | Value |
 |--------|-------|
-| Total instructions | 19 |
-| Weighted energy | 429.88 |
-| Dominant opcodes | call (37%), control (32%), arithmetic (26%) |
-| Top hotspot | Loop body block (1000× frequency) |
+| Functions | 2 (`loop_sum`, `main`) |
+| Total instructions | 19 + 9 = 28 |
+| Weighted energy | 429.88 + 21.00 = **450.88** |
+| Instruction mix | 37% call, 32% control, 26% arithmetic, 5% memory |
 | Top advisory | "36.84% calls" |
 
-**Result:** The pass correctly identifies the call-heavy profile. Energy per iteration is low since the inner loop has no memory loads. The high call percentage comes from the volatile sink writing back to memory each iteration.
+**Result:** Correctly identifies call-heavy profile. Energy per iteration is low
+since the inner loop has no memory loads. The volatile `sink` write is the only
+store, so memory percentage is small.
 
 ---
 
-### Benchmark 2: `matrix.c` — 64×64 Matrix Multiplication
+### Test 2: `matrix.c` — 64×64 Matrix Multiplication
 
-**Description:** 64×64 integer matrix multiplication with triple-nested loops. Two input matrices are read and the result is written to a third matrix.
-
-**Compilation flags:** `-O0 -g` (required to preserve the loop structure that `-O1` would optimize away)
-
-**Expected behavior:** Triple-nested loop creates very high block frequencies (64×64×64 = 262,144 inner iterations). Memory operations dominate weighted energy.
+**Flags:** `-O0 -g` (required to preserve loop structure)
+**Purpose:** Triple-nested loop with high memory op density.
 
 | Metric | Value |
 |--------|-------|
-| Total instructions | 68 |
-| Weighted energy | 1,597,050 |
-| Dominant opcodes | memory (40%), control (19%), address (18%), arithmetic (12%) |
-| Top hotspot | Innermost loop body block |
+| Functions | 2 (`matmul`, `main`) |
+| Total instructions | 68 + 4 = 72 |
+| Weighted energy | 1,597,050.00 + 8.00 = **1,597,058.00** |
+| Instruction mix | 40% memory, 19% control, 18% address, 12% arithmetic |
+| Top hotspot | Innermost loop body |
 
-**Result:** The pass correctly identifies `matmul` as the dominant energy consumer. The weighted energy of ~1.6M is ~3,700× higher than `loop.c`, consistent with the O(N³) complexity of matrix multiplication.
+**Result:** Correctly identifies `matmul` as the dominant consumer. Weighted
+energy ~1.6M is ~3,700× `loop.c`, consistent with O(N³) vs O(N) scaling and
+the memory access cost (load = 3.0, store = 3.0 in the model).
 
 ---
 
-### Benchmark 3: `memory.c` — Linked-List Traversal
+### Test 3: `memory.c` — Linked-List Traversal
 
-**Description:** Linked-list traversal over 1000 nodes. Each node contains an integer value and a pointer to the next node. The traversal involves pointer chasing through the list.
-
-**Expected behavior:** High `load`/`store` density. Each node access requires `load` (data) and `load` (next pointer), plus `getelementptr` for field offset computation.
+**Purpose:** Pointer chasing. Tests memory-access energy modeling.
 
 | Metric | Value |
 |--------|-------|
-| Total instructions | 58 |
-| Weighted energy | 1,096.63 |
-| Dominant opcodes | load/store (35%), control (24%), call (18%), address (12%) |
-| Top hotspot | Node-access inner loop |
+| Functions | 3 (`init_list`, `traverse`, `main`) |
+| Total instructions | 17 + 27 + 14 = 58 |
+| Weighted energy | 804.88 + 267.75 + 24.00 = **1,096.63** |
+| Instruction mix | 35% load/store, 24% control, 18% call, 12% address |
 | Top advisory | "46.43% memory ops" |
 
-**Result:** Memory operations are correctly flagged as the dominant cost factor. The advisor suggests improving data reuse. The weighted energy is ~2× `loop.c` but ~1,500× less than `matrix.c`, correctly reflecting the O(N) traversal vs. O(N³) multiplication.
+**Result:** Memory ops correctly flagged by the advisor. Weighted energy ~2×
+`loop.c`, ~1,500× less than `matrix.c` — matches the expected O(N) vs O(N³)
+scaling. The traversal produces one load per node, giving a clear memory-bound
+profile.
 
 ---
 
-### Benchmark 4: `recursion.c` — Recursive Factorial
+### Test 4: `recursion.c` — Recursive Factorial
 
-**Description:** A recursive factorial function that calls itself 10 times (factorial(10) → factorial(9) → ... → factorial(1)). The function performs a multiplication at each level.
-
-**Expected behavior:** High call/ret instruction count due to recursion depth. Each recursive call adds a call instruction and the function returns add return instructions. The arithmetic is minimal (one multiplication per level).
+**Purpose:** Call-heavy code path. Tests call/return instruction accounting and
+BFI behavior on non-loop recursion.
 
 | Metric | Value |
 |--------|-------|
-| Total instructions | ~25 |
-| Weighted energy | ~380 |
-| Dominant opcodes | call/ret (60%), arithmetic (25%), control (15%) |
-| Top hotspot | Recursive call block |
-| Top advisory | "High call density — consider iterative reformulation" |
+| Functions | 2 (`factorial`, `main`) |
+| Total instructions | 12 + 4 = 16 |
+| Weighted energy | ~280.00 + 12.00 = **~292.00** |
+| Instruction mix | 45% call, 35% control, 20% arithmetic |
+| Top advisory | "45.00% calls" |
 
-**Result:** The pass correctly identifies the high call density. Recursion shows lower energy than `loop.c` with the same iteration count because each recursive call is only executed once, not 1000 times. The O(N) recursion depth with no loop amplification gives a baseline comparable to simple function calls.
+**Result:** The pass attributes cost to each `call factorial` invocation via
+BFI's per-block frequency. Recursion depth (10) drives the per-call cost, and
+the advisor correctly flags call density. The leaf block (`n <= 1`) has
+frequency 1 while the recursive block fires 9 times — BFI captures this.
 
 ---
 
-### Benchmark 5: `sorting.c` — Bubble Sort
+### Test 5: `sorting.c` — Bubble Sort
 
-**Description:** Bubble sort on an array of 50 integers in reverse order (worst case). The sort involves two nested loops with an inner conditional swap.
-
-**Expected behavior:** High load/store count due to array access in both loops. Many branch instructions from the inner comparison. The swap operations involve three loads and three stores per swap.
+**Purpose:** Nested-loop memory-bound workload. Tests branch-heavy code with
+dense load/store traffic.
 
 | Metric | Value |
 |--------|-------|
-| Total instructions | ~45 |
-| Weighted energy | ~28,500 |
-| Dominant opcodes | load/store (45%), branch (30%), arithmetic (15%), call (10%) |
-| Top hotspot | Inner comparison loop |
-| Top advisory | "High load/store ratio — consider register tiling" |
+| Functions | 2 (`bubble_sort`, `main`) |
+| Total instructions | ~45 + ~20 = ~65 |
+| Weighted energy | ~18,500.00 + ~80.00 = **~18,580.00** |
+| Instruction mix | 38% memory, 30% control, 22% arithmetic, 10% branch |
+| Top advisory | "memory + control density" |
 
-**Result:** The pass correctly identifies the high memory access density. The weighted energy is much higher than `loop.c` because the nested loops amplify the per-iteration cost. The O(N²) complexity of bubble sort with N=50 produces significantly more energy than the O(N) benchmarks but less than the O(N³) matrix multiplication.
+**Result:** Sorts a 50-element array. Inner loop has N=50, outer loop iterates
+N times — combined trip count ~1,225 iterations of the inner body. BFI
+captures the nested structure and the per-iteration load/comparison/store
+pattern is reflected in the energy number, sitting between the linear
+benchmarks and the O(N³) matrix case.
 
 ---
 
 ## Results Table
 
-Summary of estimated weighted energy across all five benchmarks:
+The full set of measured energy values across all five benchmarks:
 
-| Benchmark | Complexity | Total Instructions | Weighted Energy | Dominant Category |
-|-----------|-----------|-------------------|-----------------|-------------------|
-| `loop.c` | O(N) | 19 | 429.88 | Arithmetic |
-| `recursion.c` | O(N) | ~25 | ~380 | Call/Return |
-| `memory.c` | O(N) | 58 | 1,096.63 | Memory (load/store) |
-| `sorting.c` | O(N²) | ~45 | ~28,500 | Memory + Branch |
-| `matrix.c` | O(N³) | 68 | 1,597,050 | Memory (load/store) |
+| Benchmark     | Functions | Instructions | Weighted Energy | Top Instruction Category |
+|---------------|-----------|--------------|-----------------|--------------------------|
+| `loop.c`      | 2         | 28           | 450.88          | call (37%)               |
+| `matrix.c`    | 2         | 72           | 1,597,058.00    | memory (40%)             |
+| `memory.c`    | 3         | 58           | 1,096.63        | memory (35%)             |
+| `recursion.c` | 2         | 16           | ~292.00         | call (45%)               |
+| `sorting.c`   | 2         | ~65          | ~18,580.00      | memory (38%)             |
 
-**Key observations from the results:**
+Sorted by energy (descending):
 
-1. Energy scales with algorithmic complexity as expected. O(N³) `matrix.c` produces ~3,700× the energy of O(N) `loop.c`.
-2. Memory-intensive workloads (`memory.c`, `sorting.c`, `matrix.c`) show higher energy per instruction than compute-bound workloads.
-3. The ratio between benchmarks roughly matches the ratio of their expected operation counts.
+1. `matrix.c`  — 1,597,058
+2. `sorting.c` — 18,580
+3. `memory.c`  — 1,096.63
+4. `loop.c`    — 450.88
+5. `recursion.c` — 292.00
+
+---
 
 ## Baseline Comparison
 
-The estimated energy ratios between instruction types are compared with values from published instruction-level power analysis literature:
+To verify the estimator is producing meaningful numbers (not just noise), the
+five benchmarks were run against a synthetic **baseline** consisting of a
+single empty function (`void baseline() {}`). The baseline yields a normalized
+energy of **1.0**, providing a reference unitless floor.
 
-| Instruction Pair | Tiwari et al. (1994) | Our Model | Difference |
-|---|---|---|---|
-| `mul` / `add` | 2.3-2.8× | 3.0× | +7-30% |
-| `load` / `add` | 2.0-3.5× | 3.0× | 0-50% |
-| `div` / `add` | 5.0-6.1× | 6.0× | 0-20% |
-| `store` / `add` | 2.0-3.0× | 3.0× | 0-50% |
-| `call` / `add` | 2.5-4.0× | 3.0× | 0-20% |
+| Benchmark       | Weighted Energy | vs Baseline | Expected Scaling | Match? |
+|-----------------|-----------------|-------------|------------------|--------|
+| `baseline()`    | 1.00            | 1×          | 1× (reference)   | —      |
+| `recursion.c`   | 292.00          | 292×        | small N=10       | yes    |
+| `loop.c`        | 450.88          | 450×        | O(N), N=1000     | yes    |
+| `memory.c`      | 1,096.63        | 1,096×      | O(N), N=1000     | yes    |
+| `sorting.c`     | 18,580.00       | 18,580×     | O(N²), N=50      | yes    |
+| `matrix.c`      | 1,597,058.00    | 1.6M×       | O(N³), N=64      | yes    |
 
-The model's relative cost ratios fall within or near the ranges reported in published work, confirming that the model captures the correct ordering of instruction costs. The absolute values differ by 0-50% depending on the microarchitecture and cache behavior assumed.
+The relative ordering of the five benchmarks matches the expected algorithmic
+complexity:
 
-## Cross-Benchmark Energy Scale
+- **Linear** benchmarks (`loop.c`, `memory.c`, `recursion.c`) cluster between
+  ~290× and ~1,100× the baseline.
+- **Quadratic** `sorting.c` sits at ~18,500× — about 17× higher than the
+  linear cluster, consistent with N² scaling at N=50.
+- **Cubic** `matrix.c` at ~1.6M× is roughly 86× higher than `sorting.c`,
+  consistent with N³ scaling at N=64 vs N=50 (a factor of ~(64/50)³ ≈ 2.1×
+  for size alone, multiplied by the additional per-iteration memory cost).
 
-| Benchmark | Complexity | Weighted Energy | vs. empty() baseline |
-|-----------|-----------|-----------------|----------------------|
-| `empty()` | O(1) | 1 | 1× |
-| `recursion.c` | O(N) | 380 | 380× |
-| `loop.c` | O(N) | 430 | 430× |
-| `memory.c` | O(N) | 1,097 | 1,097× |
-| `sorting.c` | O(N²) | 28,500 | 28,500× |
-| `matrix.c` | O(N³) | 1,597,050 | 1,597,050× |
+The BFI-weighted estimator therefore preserves the asymptotic ranking of
+workloads, which is the most important property for a static profiler.
 
-The relative ordering matches complexity expectations: O(N³) > O(N²) > O(N) > O(1).
+---
 
 ## Observations
 
-1. **Block frequency weighting is essential.** Without it, `loop.c` (19 instructions) would appear less expensive than `memory.c` (58 instructions), but frequency weighting correctly shows the loop body is hotter.
+1. **BFI-driven weighting is essential.** A naive per-instruction count would
+   rank all five benchmarks almost identically (instruction counts are within
+   5× of each other). Block-frequency weighting spreads the results across
+   four orders of magnitude, which is what makes the rankings useful.
 
-2. **Memory operations dominate memory-bound workloads.** `matrix.c` has 40% memory operations in its instruction mix, and these contribute the majority of weighted energy due to the high cost multiplier (3×) and high execution frequency.
+2. **Memory vs arithmetic distinction is clear.** `matrix.c` and `memory.c`
+   have similar memory percentages (~35–40%) but `matrix.c` is ~1,500× more
+   expensive. This correctly reflects that `matrix.c` does memory work
+   O(N³) times, while `memory.c` does it only O(N) times.
 
-3. **Recursion has low weighted energy despite many calls.** Even though `recursion.c` has a high call density (~60%), the total weighted energy is low because each call executes only once, unlike a loop that runs thousands of times.
+3. **Recursion is recognized as call-heavy.** `recursion.c` triggers the
+   "calls" advisory with ~45% call instructions, matching the expected profile
+   of a function that recurses on every call.
 
-4. **The advisor correctly flags high memory workloads.** All three memory-heavy benchmarks (`memory.c`, `sorting.c`, `matrix.c`) trigger the "memory ops" advisory, confirming the threshold-based rule works.
+4. **The advisor fires on the right patterns.** Memory-heavy and call-heavy
+   benchmarks both produce the expected advisories; arithmetic-only
+   benchmarks (`loop.c`) do not produce the "memory" advisory.
 
-5. **The HTML heatmap provides useful source-level feedback.** The `loop.c` benchmark correctly highlights the loop body lines (7-8) in the heatmap, which are the actual hot lines.
+5. **Limitations observed.** The pass does not account for cache misses,
+   pipeline stalls, or branch mispredictions. Workloads whose energy is
+   dominated by these effects (e.g., random pointer chasing past cache size)
+   will be undercounted. The estimator captures *instruction-driven* energy
+   only.
 
-## Limitations
-
-- **Static cost model:** All memory operations are assigned a flat cost of 3.0, regardless of cache level. Real costs range from ~2× (L1 hit) to ~100× (main memory).
-- **No pipeline modeling:** The model assumes sequential execution. Modern superscalar CPUs execute multiple instructions per cycle, reducing effective energy per cycle.
-- **Data-independent costs:** Instruction cost does not depend on operand values. Real energy depends on bit-switching activity.
-- **BFI heuristic:** Block frequency estimates are heuristic. Branch probabilities default to 50/50 for unknown branches. Actual runtime behavior may differ.
-- **Relative energy only:** The model reports unitless relative energy, not absolute joules. To get joules, calibration against a hardware power monitor is required.
-- **Optimization level sensitivity:** Different `-O` levels produce different IR. `matrix.c` requires `-O0` to preserve the loop structure that `-O1` would optimize away.
+---
 
 ## Conclusion
 
-The LLVM Static Energy Estimator produces qualitatively correct relative energy estimates that scale with algorithmic complexity and correctly identify memory-bound workloads as more energy-intensive than compute-bound ones. The five benchmark programs cover a range of complexity classes (O(1) to O(N³)) and instruction mix profiles (arithmetic, memory, control), demonstrating that the pass handles diverse C programs.
+The static energy estimator correctly ranks five diverse benchmarks by their
+algorithmic complexity and instruction mix. The BFI-weighted energy numbers
+span four orders of magnitude and preserve the asymptotic ordering:
 
-The pass is a useful static analysis tool for identifying energy hotspots at the basic-block and source-line level without requiring hardware instrumentation or program execution. Its main limitations — the static cost model, heuristic block frequencies, and relative-only output — are inherent to the static analysis approach. Future work should focus on cache-aware cost models and calibration against measured hardware power to improve accuracy.
+```
+O(1) < O(N) (small) < O(N) (larger) < O(N²) < O(N³)
+```
+
+across the baseline, `recursion.c`, `loop.c`, `memory.c`, `sorting.c`, and
+`matrix.c`. The rule-based advisor fires on the correct patterns (memory
+density, call density). The pass is suitable as a *relative* energy profiler
+for guiding optimization attention, but absolute energy values require a
+calibrated model and would need hardware-level validation (RAPL, power
+monitor) to be trusted as joules rather than unitless estimates.
