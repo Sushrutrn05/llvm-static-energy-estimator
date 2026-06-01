@@ -1,0 +1,32 @@
+# LLVM Energy Project
+
+# Build artifacts
+EnergyPass.so
+*.o
+*.obj
+
+# Generated LLVM IR
+*.ll
+
+# Reports
+reports/energy_report.json
+reports/energy_report.html
+
+# Generated charts
+charts/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
