@@ -43,6 +43,16 @@ Rank  Block                        Energy    Percent
    3  BB_3                       248.00    21.57%
 ```
 
+## Demo Screenshots
+
+Sample outputs from the energy estimation pass:
+
+- ![Dashboard](demo/dashboard.png) — HTML report dashboard showing energy hotspots
+- ![Heatmap](demo/heatmap.png) — Source code heatmap with line-level energy coloring
+- ![Terminal Run 1](demo/terminal_run1.png) — Terminal output from running the pass
+- ![Terminal Run 2](demo/terminal_run2.png) — Terminal output showing instruction breakdown
+- ![Failure Case](demo/failure_case.png) — Example of an edge case or failure mode
+
 ## Project Structure
 
 ```
@@ -53,13 +63,20 @@ llvm-energy/
 ├── benchmarks/
 │   ├── loop.c                # Arithmetic tight loop
 │   ├── matrix.c              # 64×64 matrix multiply
-│   └── memory.c              # Linked-list traversal
+│   ├── memory.c              # Linked-list traversal
+│   ├── recursion.c           # Recursive factorial
+│   └── sorting.c             # Bubble sort array
 ├── scripts/
 │   ├── build.sh              # Build the pass
 │   ├── run.sh                # Compile + run on source file
 │   ├── visualize.py          # HTML report generator
 │   └── run_benchmarks.sh     # Run all benchmarks
-├── demo/                     # Sample screenshots
+├── demo/
+│   ├── dashboard.png         # HTML report screenshot
+│   ├── heatmap.png           # Source code heatmap
+│   ├── terminal_run1.png     # Sample terminal run
+│   ├── terminal_run2.png     # Another terminal run
+│   └── failure_case.png      # Example of incorrect output
 ├── README.md
 ├── DESIGN.md
 ├── IMPLEMENTATION.md
