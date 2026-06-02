@@ -71,9 +71,3 @@ llvm-energy/
 - Uses a static energy model
 - Estimates relative energy only
 - Not validated using physical power measurements
-
-## Future Work
-
-- Improve energy model accuracy
-- Support more LLVM instructions
-- Add more visualizations
