@@ -11,7 +11,7 @@ LLVM_CXXFLAGS=$(llvm-config-14 --cxxflags)
 LLVM_LDFLAGS=$(llvm-config-14 --ldflags)
 
 echo "[*] Building EnergyPass.so ..."
-clang++-14 $LLVM_CXXFLAGS -fPIC -std=c++17 \
+clang++-14 $LLVM_CXXFLAGS -fPIC -std=c++17 -g \
     EnergyPass.cpp \
     $LLVM_LDFLAGS --shared \
     -o EnergyPass.so

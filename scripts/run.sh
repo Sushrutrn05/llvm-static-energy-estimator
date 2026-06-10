@@ -12,7 +12,7 @@ set -euo pipefail
 
 SRC="${1:?Usage: $0 <source.c> [clang-flags]}"
 shift 1
-CLANG_FLAGS="${*:--O1}"
+CLANG_FLAGS="${*:--O0}"
 BASE="${SRC%.c}"
 LL="${BASE}.ll"
 MODEL="models/x86_energy.json"
@@ -27,8 +27,20 @@ echo "[*] Compiling ${SRC} -> ${LL} (${CLANG_FLAGS}) ..."
 clang-14 -S -emit-llvm -g $CLANG_FLAGS "$SRC" -o "$LL"
 
 echo "[*] Running EnergyPass (with -Rpass-analysis=energy remarks) ..."
+mkdir -p reports
 opt-14 -load "$PASS" -enable-new-pm=0 -energy \
     -energy-model "$MODEL" -pass-remarks-analysis=energy \
-    -disable-output "$LL" 2>&1 | grep -v "^$"
+    -disable-output "$LL" 2>reports/remarks.txt
+
+echo ""
+echo "============================================================"
+echo "  LLVM OPTIMIZATION REMARKS (-Rpass-analysis=energy)"
+echo "============================================================"
+cat reports/remarks.txt
+echo "============================================================"
+echo ""
 
 echo "[*] Done"
+echo "[*] Generating HTML report ..."
+python3 scripts/visualize.py
+echo "[*] All done"

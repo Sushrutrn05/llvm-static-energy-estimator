@@ -8,6 +8,7 @@ Usage:
 """
 
 import json
+import math
 import sys
 import os
 
@@ -35,13 +36,13 @@ def _heat_bg(ratio):
     if ratio <= 0:
         return "#1e1e1e"
     elif ratio <= 0.25:
-        return "#1a3a2a"
+        return "#1a472a"
     elif ratio <= 0.50:
-        return "#3a3a1a"
+        return "#7d6608"
     elif ratio <= 0.75:
-        return "#4a2a1a"
+        return "#7b241c"
     else:
-        return "#5a1a1a"
+        return "#c0392b"
 
 
 def _heat_fg(ratio):
@@ -225,60 +226,71 @@ tr.max td { background: #fff0f0; }
                     f"<div class='ben'>{adv['benefit']}</div></div>")
             html.append("</div>")
 
-        # Heatmap
-        source_file = func.get("source_file", "")
-        source_lines = func.get("source_lines", [])
-        if source_file and source_lines:
-            src_path = os.path.normpath(source_file)
-            line_energy = {sl["line"]: sl["energy"]
-                           for sl in source_lines if sl["line"] > 0}
-            max_line_en = max(line_energy.values()) if line_energy else 1
+        html.append("</div></div>")  # card-body, card
 
-            html.append("<div class='section-title'>Source Heatmap</div>")
-            html.append(
-                f"<div style='font-size:0.8rem;color:#888;margin-bottom:4px;'>"
-                f"{source_file}</div>")
-            html.append("<div class='heatmap'>")
+    # --- Unified heatmap: one per source file, merging line energy across all functions ---
+    by_source = {}
+    for func in functions:
+        sf = func.get("source_file", "")
+        if not sf:
+            continue
+        if sf not in by_source:
+            by_source[sf] = {}
+        for sl in func.get("source_lines", []):
+            line = sl.get("line", 0)
+            if line <= 0:
+                continue
+            by_source[sf][line] = by_source[sf].get(line, 0) + sl.get("energy", 0)
 
-            try:
-                with open(src_path, "r", encoding="utf-8") as fh:
-                    src_lines = fh.readlines()
-                for i, src_line in enumerate(src_lines, 1):
-                    en = line_energy.get(i, 0)
-                    r = en / max_line_en if max_line_en > 0 else 0
-                    bg = _heat_bg(r)
-                    fg = _heat_fg(r)
-                    ln = f"{i:4d}"
-                    code = src_line.rstrip()
-                    title = f"L{i}: {_fmt(en)}" if en > 0 else ""
-                    html.append(
-                        f"<div class='heatmap-line' style='background:{bg};'"
-                        f" title='{title}'>"
-                        f"<span class='heatmap-ln'>{ln}</span>"
-                        f"<span class='heatmap-src' style='color:{fg};'>"
-                        f"{code}</span></div>")
-            except FileNotFoundError:
+    for source_file, line_energy in by_source.items():
+        src_path = os.path.normpath(source_file)
+        max_line_en = max(line_energy.values()) if line_energy else 1
+
+        html.append("<div class='card'>"
+                    "<div class='card-title'>Source Heatmap</div>"
+                    "<div class='card-body'>")
+        html.append(
+            f"<div style='font-size:0.8rem;color:#888;margin-bottom:4px;'>"
+            f"{source_file}</div>")
+        html.append("<div class='heatmap'>")
+
+        try:
+            with open(src_path, "r", encoding="utf-8") as fh:
+                src_lines = fh.readlines()
+            for i, src_line in enumerate(src_lines, 1):
+                en = line_energy.get(i, 0)
+                r = (math.log(1 + en) / math.log(1 + max_line_en)) if max_line_en > 0 else 0
+                bg = _heat_bg(r)
+                fg = _heat_fg(r)
+                ln = f"{i:4d}"
+                code = src_line.rstrip()
+                title = f"L{i}: {_fmt(en)}" if en > 0 else ""
                 html.append(
-                    f"<div style='padding:12px;color:#888;font-size:0.85rem;'>"
-                    f"Source file not found: {source_file}</div>")
-
-            html.append("</div>")  # heatmap
-            # Legend
+                    f"<div class='heatmap-line' style='background:{bg};'"
+                    f" title='{title}'>"
+                    f"<span class='heatmap-ln'>{ln}</span>"
+                    f"<span class='heatmap-src' style='color:{fg};'>"
+                    f"{code}</span></div>")
+        except FileNotFoundError:
             html.append(
-                "<div class='legend'>"
-                "Scale: "
-                "<span><span class='legend-swatch' style='background:#1e1e1e;'>"
-                "</span> none</span> "
-                "<span><span class='legend-swatch' style='background:#1a3a2a;'>"
-                "</span> low</span> "
-                "<span><span class='legend-swatch' style='background:#3a3a1a;'>"
-                "</span> medium</span> "
-                "<span><span class='legend-swatch' style='background:#4a2a1a;'>"
-                "</span> high</span> "
-                "<span><span class='legend-swatch' style='background:#5a1a1a;'>"
-                "</span> very high</span>"
-                "</div>")
+                f"<div style='padding:12px;color:#888;font-size:0.85rem;'>"
+                f"Source file not found: {source_file}</div>")
 
+        html.append("</div>")  # heatmap
+        html.append(
+            "<div class='legend'>"
+            "Scale: "
+            "<span><span class='legend-swatch' style='background:#1e1e1e;'>"
+            "</span> none</span> "
+            "<span><span class='legend-swatch' style='background:#1a472a;'>"
+            "</span> low</span> "
+            "<span><span class='legend-swatch' style='background:#7d6608;'>"
+            "</span> medium</span> "
+            "<span><span class='legend-swatch' style='background:#7b241c;'>"
+            "</span> high</span> "
+            "<span><span class='legend-swatch' style='background:#c0392b;'>"
+            "</span> very high</span>"
+            "</div>")
         html.append("</div></div>")  # card-body, card
 
     html.append(

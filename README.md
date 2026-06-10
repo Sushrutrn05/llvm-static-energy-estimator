@@ -4,6 +4,8 @@
 
 An LLVM 14 pass that estimates relative energy consumption of C programs at the basic-block level. Uses block frequency analysis (BFI) to weight instruction costs. Outputs terminal tables, JSON reports, and an HTML source heatmap.
 
+Architecture: A FunctionPass reads LLVM IR with debug info, queries BFI for block frequencies, looks up opcode costs from a JSON model, and outputs terminal/JSON reports. LLVM remarks are emitted via OptimizationRemarkAnalysis. A separate Python script generates the HTML heatmap.
+
 ## Features
 
 - Function-wise energy estimation
@@ -12,6 +14,7 @@ An LLVM 14 pass that estimates relative energy consumption of C programs at the 
 - HTML visualization
 - Optimization suggestions
 - LLVM remark integration (`-Rpass-analysis=energy`)
+- Built-in x86-64 and AArch64 energy models (`models/x86_energy.json`, `models/aarch64_energy.json`)
 
 ## Requirements
 
@@ -44,16 +47,6 @@ Rank  Block                        Energy    Percent
     3  BB_3                       248.00    21.57%
 ```
 
-## Demo Screenshots
-
-Sample outputs from the energy estimation pass:
-
-- ![Dashboard](demo/dashboard.png) — HTML report dashboard showing energy hotspots
-- ![Heatmap](demo/heatmap.png) — Source code heatmap with line-level energy coloring
-- ![Terminal Run 1](demo/terminal_run1.png) — Terminal output from running the pass
-- ![Terminal Run 2](demo/terminal_run2.png) — Terminal output showing instruction breakdown
-- ![Failure Case](demo/failure_case.png) — Example of an edge case or failure mode
-
 ## Generate HTML Report
 
 After running the pass and generating the JSON report, create the visualization:
@@ -78,7 +71,10 @@ Remarks include source file and line information when debug info is present
 (`-g` flag). Example output:
 
 ```
-<source_file>:<line>:0: remark: <pass_name>: <message> [-Rpass-analysis=energy]
+benchmarks/loop.c:8:0: remark: energy: block energy: 22.00 (frequency: 1.00) at loop.c:8 [-Rpass-analysis=energy]
+benchmarks/loop.c:9:0: remark: energy: block energy: 256.00 (frequency: 32.00) at loop.c:9 [-Rpass-analysis=energy]
+benchmarks/loop.c:10:0: remark: energy: block energy: 620.00 (frequency: 31.00) at loop.c:10 [-Rpass-analysis=energy]
+benchmarks/loop.c:12:0: remark: energy: estimated energy: 1158.00 (32 insts, 5 blocks) [-Rpass-analysis=energy]
 ```
 
 This integrates with clang's `-Rpass-analysis=energy` when used in a full
@@ -90,7 +86,8 @@ compilation pipeline. `scripts/run.sh` enables this automatically.
 llvm-energy/
 ├── EnergyPass.cpp            # LLVM pass implementation
 ├── models/
-│   └── x86_energy.json       # Opcode cost model (41 opcodes)
+│   ├── x86_energy.json        # x86-64 cost model (41 opcodes)
+│   └── aarch64_energy.json    # AArch64 cost model (41 opcodes, Cortex-A55)
 ├── benchmarks/
 │   ├── loop.c                # Arithmetic tight loop
 │   ├── matrix.c              # 64×64 matrix multiply
@@ -102,12 +99,6 @@ llvm-energy/
 │   ├── run.sh                # Compile + run on source file
 │   ├── visualize.py          # HTML report generator
 │   └── run_benchmarks.sh     # Run all benchmarks
-├── demo/
-│   ├── dashboard.png         # HTML report screenshot
-│   ├── heatmap.png           # Source code heatmap
-│   ├── terminal_run1.png     # Sample terminal run
-│   ├── terminal_run2.png     # Another terminal run
-│   └── failure_case.png      # Example of incorrect output
 ├── README.md
 ├── DESIGN.md
 ├── IMPLEMENTATION.md

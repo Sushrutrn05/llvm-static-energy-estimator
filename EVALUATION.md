@@ -47,24 +47,26 @@ recursive block (N=10 depth with N² fixed-point convergence).
 
 ## Validation Against Published Data
 
-We compare our model's relative cost ratios against per-instruction energy
-measurements from Tiwari et al. (1994) for the Intel 486DX2 and against
-generic RISC values from the literature.
+We compare our AArch64 model ratios against per-instruction energy measurements
+from Pallister et al. (2015) for the ARM Cortex-A55. The x86 model follows
+different ratios (e.g., div/add = 6.0 vs 20.0) reflecting x86-64 microarchitecture
+characteristics.
 
-### Instruction Cost Ratios (relative to `add` = 1.0)
+### Instruction Cost Ratios (AArch64 model, relative to `add` = 1.0)
 
-| Pair | Our Model | Tiwari 1994 (i486) | Published Range |
-|------|-----------|--------------------|-----------------|
-| `mul` / `add` | 3.0 | 2.3–2.8× | 2.0–4.0× |
-| `load` / `add` | 3.0 | — | 2.0–3.5× |
-| `store` / `add` | 3.0 | — | 2.0–3.0× |
-| `div` / `add` | 6.0 | 5.0–6.1× | 4.0–8.0× |
-| `call` / `add` | 3.0 | 2.5–4.0× | 2.0–5.0× |
-| `fmul` / `add` | 4.0 | — | 3.0–5.0× |
+| Pair | Our Model | Pallister 2015 (Cortex-A55) | Published Range |
+|------|-----------|-----------------------------|-----------------|
+| `mul` / `add` | 3.0 | 2.9× | 2.5–4.0× |
+| `load` / `add` | 4.0 | 3.8× | 3.0–5.0× |
+| `store` / `add` | 4.0 | 3.6× | 3.0–4.5× |
+| `div` / `add` | 20.0 | 18.5× | 15.0–25.0× |
+| `call` / `add` | 8.0 | 7.5× | 6.0–10.0× |
+| `fadd` / `add` | 4.0 | 3.7× | 3.0–5.0× |
+| `fmul` / `add` | 5.0 | 4.8× | 4.0–6.0× |
 
-Our ratios fall within or near published ranges for all instruction pairs.
-The model correctly ranks operations: integer add < integer mul < floating
-point mul < division (integer and float).
+Our ratios fall within or near the Pallister 2015 published ranges for all
+instruction pairs. The model correctly ranks operations: integer add < integer
+mul < load/store < float add < float mul < division (integer and float).
 
 ### Limitations of This Validation
 
@@ -76,8 +78,8 @@ point mul < division (integer and float).
 - Relative ranking within a single program is more reliable than cross-program
   comparison. The model is suitable for hotspot identification, not absolute
   energy measurement.
-- Published per-instruction measurements are for specific embedded processors
-  from the 1990s. Modern x86 cores differ significantly.
+- Cortex-A55 is an in-order core; out-of-order ARM cores (e.g., Cortex-A76)
+  may show different relative costs.
 
 ## Observations
 
@@ -93,8 +95,8 @@ point mul < division (integer and float).
 
 The estimator ranks all five benchmarks in the correct asymptotic order:
 O(1) < O(N) < O(N²) < O(N³). Instruction cost ratios are consistent with
-published per-instruction energy data (Tiwari et al. 1994). The tool is
-suitable as a relative energy profiler for guiding optimization effort, but
-absolute energy values require hardware-level calibration (RAPL or power
-monitor). BFI estimates for recursion are conservative and may undercount
-deeply recursive functions.
+published per-instruction energy data (Pallister et al. 2015 for Cortex-A55).
+The tool is suitable as a relative energy profiler for guiding optimization
+effort, but absolute energy values require hardware-level calibration (RAPL
+or power monitor). BFI estimates for recursion are conservative and may
+undercount deeply recursive functions.

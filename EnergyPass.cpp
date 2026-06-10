@@ -19,6 +19,7 @@
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <cstdio>
 
 using namespace llvm;
 
@@ -329,24 +330,25 @@ public:
       BlockIdx++;
 
       // --- Per-block remark with source location ---
-      // Uses the (PassName, RemarkName, Instruction*) constructor which
-      // automatically extracts debug location from the instruction's
-      // DebugLoc metadata (requires -g at compile time).
+      // Finds the first instruction in the block with a valid DebugLoc
+      // so the remark carries the correct source file and line.
       {
         OptimizationRemarkEmitter &ORE =
             getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
 
-        const Instruction *First = &*BB.begin();
-        OptimizationRemarkAnalysis RemB("energy", "BlockEnergy", First);
+        const Instruction *FirstDbg = &*BB.begin();
+        for (const Instruction &I : BB) {
+          if (I.getDebugLoc()) {
+            FirstDbg = &I;
+            break;
+          }
+        }
+        OptimizationRemarkAnalysis RemB("energy", "BlockEnergy", FirstDbg);
         RemB << "block energy: " << fmtDouble(BlockEnergy)
              << " (frequency: " << fmtDouble(NormalizedFreq) << ")";
-        // Append source location if debug info is available
-        if (DebugLoc DL = First->getDebugLoc()) {
-          unsigned Line = DL.getLine();
-          if (const DIScope *Scope = dyn_cast<DIScope>(DL.getScope()))
-            RemB << " at " << Scope->getFilename() << ":" << std::to_string(Line);
-        }
+        fflush(stdout);
         ORE.emit(RemB);
+        fflush(stdout);
       }
     }
 
@@ -478,18 +480,30 @@ public:
     AllReports.push_back(std::move(FR));
 
     // === Per-function Optimization Remark ===
-    // Uses the (PassName, RemarkName, Function*) constructor which
-    // automatically extracts debug location from the function's
-    // DISubprogram metadata (requires -g at compile time).
+    // Finds the first instruction with a valid DebugLoc in the function
+    // so the remark carries the correct source file and line.
     {
       OptimizationRemarkEmitter &ORE =
           getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
 
-      OptimizationRemarkAnalysis Rem("energy", "EstimatedEnergy", &F);
+      const Instruction *FirstDbg = nullptr;
+      for (const BasicBlock &BB : F) {
+        for (const Instruction &I : BB) {
+          if (I.getDebugLoc()) {
+            FirstDbg = &I;
+            break;
+          }
+        }
+        if (FirstDbg) break;
+      }
+      const Instruction *Anchor = FirstDbg ? FirstDbg : &*F.begin()->begin();
+      OptimizationRemarkAnalysis Rem("energy", "EstimatedEnergy", Anchor);
       Rem << "estimated energy: " << fmtDouble(TotalEnergy)
           << " (" << std::to_string(TotalInsts) << " insts, "
           << std::to_string(TotalBlocks) << " blocks)";
+      fflush(stdout);
       ORE.emit(Rem);
+      fflush(stdout);
     }
 
     // === Instruction Breakdown Table ===
@@ -535,6 +549,7 @@ public:
     }
 
     outs() << "============================================================\n";
+    fflush(stdout);
 
     return false;
   }

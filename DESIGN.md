@@ -39,8 +39,10 @@ Trade-off: BFI frequencies are heuristic, energy is relative (unitless).
 **JSON Energy Model**: Opcode costs in external file allow retargeting without
 recompilation. Missing opcodes default to cost 1.0.
 
-**Block Frequency Weighting**: Essential for capturing loop impact.
-A block with 1000× frequency contributes 1000× the per-instruction cost.
+**Block Frequency Weighting**: BFI is chosen over alternatives because it
+estimates execution frequency without running the program. A block inside a
+loop with 1000× iteration count contributes 1000× the per-instruction cost,
+enabling realistic hotspot detection.
 
 **Three-Level Granularity**: Block (hotspots), opcode (advisors), source line
 (heatmap) covers typical developer questions: "what function/block/line is hot?"
