@@ -2,7 +2,7 @@
 cd /mnt/c/Users/91636/llvm-energy
 MODEL=models/x86_energy.json
 PASS=./EnergyPass.so
-for name in loop matrix memory; do
+for name in loop matrix memory recursion sorting; do
     echo "============================================================"
     echo "  BENCHMARK: ${name}"
     echo "============================================================"

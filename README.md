@@ -11,6 +11,7 @@ An LLVM 14 pass that estimates relative energy consumption of C programs at the 
 - JSON report generation
 - HTML visualization
 - Optimization suggestions
+- LLVM remark integration (`-Rpass-analysis=energy`)
 
 ## Requirements
 
@@ -38,9 +39,9 @@ Produces `EnergyPass.so`.
 ===== ENERGY HOTSPOTS =====
 Rank  Block                        Energy    Percent
 ----  -------------------------  --------  --------
-   1  BB_2                       620.00    53.91%
-   2  BB_1                       256.00    22.26%
-   3  BB_3                       248.00    21.57%
+    1  BB_2                       620.00    53.91%
+    2  BB_1                       256.00    22.26%
+    3  BB_3                       248.00    21.57%
 ```
 
 ## Demo Screenshots
@@ -52,6 +53,36 @@ Sample outputs from the energy estimation pass:
 - ![Terminal Run 1](demo/terminal_run1.png) — Terminal output from running the pass
 - ![Terminal Run 2](demo/terminal_run2.png) — Terminal output showing instruction breakdown
 - ![Failure Case](demo/failure_case.png) — Example of an edge case or failure mode
+
+## Generate HTML Report
+
+After running the pass and generating the JSON report, create the visualization:
+
+```
+python3 scripts/visualize.py
+```
+
+This produces `reports/energy_report.html` with a source code heatmap.
+
+## Remarks via -Rpass-analysis=energy
+
+The pass emits per-block and per-function remarks through LLVM's
+OptimizationRemarkAnalysis system. Enable them with:
+
+```
+opt-14 -load ./EnergyPass.so -energy -pass-remarks-analysis=energy \
+    -energy-model models/x86_energy.json -disable-output test.ll
+```
+
+Remarks include source file and line information when debug info is present
+(`-g` flag). Example output:
+
+```
+<source_file>:<line>:0: remark: <pass_name>: <message> [-Rpass-analysis=energy]
+```
+
+This integrates with clang's `-Rpass-analysis=energy` when used in a full
+compilation pipeline. `scripts/run.sh` enables this automatically.
 
 ## Project Structure
 

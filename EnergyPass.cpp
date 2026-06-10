@@ -340,6 +340,12 @@ public:
         OptimizationRemarkAnalysis RemB("energy", "BlockEnergy", First);
         RemB << "block energy: " << fmtDouble(BlockEnergy)
              << " (frequency: " << fmtDouble(NormalizedFreq) << ")";
+        // Append source location if debug info is available
+        if (DebugLoc DL = First->getDebugLoc()) {
+          unsigned Line = DL.getLine();
+          if (const DIScope *Scope = dyn_cast<DIScope>(DL.getScope()))
+            RemB << " at " << Scope->getFilename() << ":" << std::to_string(Line);
+        }
         ORE.emit(RemB);
       }
     }

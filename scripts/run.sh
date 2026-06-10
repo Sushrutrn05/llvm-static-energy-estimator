@@ -26,8 +26,9 @@ fi
 echo "[*] Compiling ${SRC} -> ${LL} (${CLANG_FLAGS}) ..."
 clang-14 -S -emit-llvm -g $CLANG_FLAGS "$SRC" -o "$LL"
 
-echo "[*] Running EnergyPass ..."
+echo "[*] Running EnergyPass (with -Rpass-analysis=energy remarks) ..."
 opt-14 -load "$PASS" -enable-new-pm=0 -energy \
-    -energy-model "$MODEL" -disable-output "$LL" 2>&1 | grep -v "^$"
+    -energy-model "$MODEL" -pass-remarks-analysis=energy \
+    -disable-output "$LL" 2>&1 | grep -v "^$"
 
 echo "[*] Done"
